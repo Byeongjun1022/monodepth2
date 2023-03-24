@@ -37,6 +37,15 @@ class MonodepthOptions:
                                  type=str,
                                  help="path to the npz file which is needed for gt",
                                  default='/mnt/study/depth/DDAD/gt_val/gt_depths.npz')
+        self.parser.add_argument("--multi_step",
+                                 help="if set, use multi step lr scheduler",
+                                 action="store_true"
+                                 )
+        self.parser.add_argument("--steps",
+                                 nargs="+",
+                                 type=int,
+                                 help="scales used in the loss",
+                                 default=[0, 1, 2, 3])
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

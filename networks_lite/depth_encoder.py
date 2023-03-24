@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from timm.models.layers import DropPath
 import math
 import torch.cuda
+from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -276,6 +277,28 @@ class LGFI(nn.Module):
 
         return x
 
+class MAB(nn.Module):
+    def __init__(self, num_channels, residual, block_size=(2,2), grid_size=(2,2) ):
+        super().__init__()
+        self.block_size=block_size
+        self.grid_size=grid_size
+        self.num_channels=num_channels
+        self.residual=residual
+
+        self.mab=ResidualSplitHeadMultiAxisGmlpLayer(self.block_size, self.grid_size, self.num_channels)
+
+    def forward(self, x):
+        input_= x
+
+        x= x.permute(0,2,3,1)  # (N, C, H, W) -> (N, H, W, C)
+        x= self.mab(x)
+        x= x.permute(0,3,1,2)
+
+        if self.residual:
+            x= input_ + x
+
+        return x
+
 
 class AvgPool(nn.Module):
     def __init__(self, ratio):
@@ -295,12 +318,13 @@ class LiteMono(nn.Module):
     """
     Lite-Mono
     """
-    def __init__(self, in_chans=3, model='lite-mono', height=192, width=640,
+    def __init__(self, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
                  heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
 
         super().__init__()
+        self.residual=residual
 
         if model == 'lite-mono':
             self.num_ch_enc = np.array([48, 80, 128])
@@ -339,7 +363,7 @@ class LiteMono(nn.Module):
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
 
         for g in global_block_type:
-            assert g in ['None', 'LGFI']
+            assert g in ['None', 'LGFI', 'MAB']
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -377,6 +401,8 @@ class LiteMono(nn.Module):
                                                  use_pos_emb=use_pos_embd_xca[i], num_heads=heads[i],
                                                  layer_scale_init_value=layer_scale_init_value,
                                                  ))
+                    elif global_block_type[i] == 'MAB':
+                        stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual))
 
                     else:
                         raise NotImplementedError

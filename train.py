@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 
 from trainer import Trainer
 from options import MonodepthOptions
+import count_number
 
 options = MonodepthOptions()
 opts = options.parse()
@@ -15,4 +16,10 @@ opts = options.parse()
 
 if __name__ == "__main__":
     trainer = Trainer(opts)
-    trainer.train()
+    if opts.count:
+        enc_parameter_num = count_number.count_parameters(trainer.models["encoder"])
+        dec_parameter_num = count_number.count_parameters(trainer.models["depth"])
+        print(f'encoder parameters:{enc_parameter_num}')
+        print(f'decoder parameters:{dec_parameter_num}')
+    else:
+        trainer.train()

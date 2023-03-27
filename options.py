@@ -44,6 +44,10 @@ class MonodepthOptions:
         self.parser.add_argument("--res",
                                  help='use residual path in MAB',
                                  action='store_true')
+        self.parser.add_argument("--count",
+                                 help='if set, just count the number of parameters',
+                                 action='store_true'
+                                 )
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

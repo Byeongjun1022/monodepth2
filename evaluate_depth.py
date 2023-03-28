@@ -100,7 +100,10 @@ def evaluate(opt):
                                 pin_memory=True, drop_last=False)
 
         if opt.lite:
-            encoder = networks_lite.LiteMono(residual=opt.res, global_block_type=[opt.global_block_type for i in range(3)])
+            encoder = networks_lite.LiteMono(block_size=tuple(opt.block_size),
+                                             grid_size=tuple(opt.grid_size),
+                                             residual=opt.res,
+                                             global_block_type=[opt.global_block_type for i in range(3)])
         else:
             encoder = networks.ResnetEncoder(opt.num_layers, False)
 

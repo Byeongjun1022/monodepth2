@@ -55,7 +55,10 @@ class Trainer:
             self.opt.frame_ids.append("s")
 
         if self.opt.lite:
-            self.models["encoder"] = networks_lite.LiteMono(residual=self.opt.res, global_block_type=[self.opt.global_block_type for i in range(3)])
+            self.models["encoder"] = networks_lite.LiteMono(block_size=tuple(self.opt.block_size),
+                                                            grid_size=tuple(self.opt.grid_size),
+                                                            residual=self.opt.res,
+                                                            global_block_type=[self.opt.global_block_type for i in range(3)])
             self.models["encoder"].to(self.device)
             self.parameters_to_train += list(self.models["encoder"].parameters())
 
@@ -142,6 +145,7 @@ class Trainer:
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
             self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+        # self.model_lr_scheduler=optim.lr_scheduler.MultiStepLR(self.model_optimizer,milestones=[15,18,22,25],gamma=0.5)
 
         if self.opt.load_weights_folder is not None:
             self.load_model()

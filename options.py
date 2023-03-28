@@ -48,6 +48,16 @@ class MonodepthOptions:
                                  help='if set, just count the number of parameters',
                                  action='store_true'
                                  )
+        self.parser.add_argument('--block_size',
+                                 nargs='+',
+                                 type=int,
+                                 default=[2,2]
+                                 )
+        self.parser.add_argument('--grid_size',
+                                 nargs='+',
+                                 type=int,
+                                 default=[2, 2]
+                                 )
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

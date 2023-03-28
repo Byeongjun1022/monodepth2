@@ -278,7 +278,7 @@ class LGFI(nn.Module):
         return x
 
 class MAB(nn.Module):
-    def __init__(self, num_channels, residual, block_size=(2,2), grid_size=(2,2) ):
+    def __init__(self, num_channels, residual, block_size=(4,4), grid_size=(4,4) ):
         super().__init__()
         self.block_size=block_size
         self.grid_size=grid_size
@@ -318,13 +318,15 @@ class LiteMono(nn.Module):
     """
     Lite-Mono
     """
-    def __init__(self, residual, in_chans=3, model='lite-mono', height=192, width=640,
+    def __init__(self, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
                  heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
 
         super().__init__()
-        self.residual=residual
+        self.residual = residual
+        self.block_size = block_size
+        self.grid_size = grid_size
 
         if model == 'lite-mono':
             self.num_ch_enc = np.array([48, 80, 128])
@@ -402,7 +404,8 @@ class LiteMono(nn.Module):
                                                  layer_scale_init_value=layer_scale_init_value,
                                                  ))
                     elif global_block_type[i] == 'MAB':
-                        stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual))
+                        stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual,
+                                                block_size=self.block_size, grid_size=self.grid_size))
 
                     else:
                         raise NotImplementedError

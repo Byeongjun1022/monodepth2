@@ -58,6 +58,9 @@ class MonodepthOptions:
                                  type=int,
                                  default=[2, 2]
                                  )
+        self.parser.add_argument("--maxim",
+                                 help='use maxim instead of models proposed in mono_lite',
+                                 action='store_true')
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

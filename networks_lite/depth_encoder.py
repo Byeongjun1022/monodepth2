@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from timm.models.layers import DropPath
 import math
 import torch.cuda
-from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer
+from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -318,7 +318,7 @@ class LiteMono(nn.Module):
     """
     Lite-Mono
     """
-    def __init__(self, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
+    def __init__(self, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
                  heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
@@ -327,6 +327,7 @@ class LiteMono(nn.Module):
         self.residual = residual
         self.block_size = block_size
         self.grid_size = grid_size
+        self.use_maxim = maxim
 
         if model == 'lite-mono':
             self.num_ch_enc = np.array([48, 80, 128])
@@ -391,31 +392,37 @@ class LiteMono(nn.Module):
             self.downsample_layers.append(downsample_layer)
 
         self.stages = nn.ModuleList()
-        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
-        cur = 0
-        for i in range(3):
-            stage_blocks = []
-            for j in range(self.depth[i]):
-                if j > self.depth[i] - global_block[i] - 1:
-                    if global_block_type[i] == 'LGFI':
-                        stage_blocks.append(LGFI(dim=self.dims[i], drop_path=dp_rates[cur + j],
-                                                 expan_ratio=expan_ratio,
-                                                 use_pos_emb=use_pos_embd_xca[i], num_heads=heads[i],
-                                                 layer_scale_init_value=layer_scale_init_value,
-                                                 ))
-                    elif global_block_type[i] == 'MAB':
-                        stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual,
-                                                block_size=self.block_size, grid_size=self.grid_size))
+        if self.use_maxim:
+            channels=[48,80,128]
+            for i in range(3):
+                self.stages.append(UNetEncoderBlock(self.dims[i],channels[i], block_size=(2,2), grid_size=(2,2),
+                                                    downsample=False))
+        else:
+            dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
+            cur = 0
+            for i in range(3):
+                stage_blocks = []
+                for j in range(self.depth[i]):
+                    if j > self.depth[i] - global_block[i] - 1:
+                        if global_block_type[i] == 'LGFI':
+                            stage_blocks.append(LGFI(dim=self.dims[i], drop_path=dp_rates[cur + j],
+                                                     expan_ratio=expan_ratio,
+                                                     use_pos_emb=use_pos_embd_xca[i], num_heads=heads[i],
+                                                     layer_scale_init_value=layer_scale_init_value,
+                                                     ))
+                        elif global_block_type[i] == 'MAB':
+                            stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual,
+                                                    block_size=self.block_size, grid_size=self.grid_size))
 
+                        else:
+                            raise NotImplementedError
                     else:
-                        raise NotImplementedError
-                else:
-                    stage_blocks.append(DilatedConv(dim=self.dims[i], k=3, dilation=self.dilation[i][j], drop_path=dp_rates[cur + j],
-                                                    layer_scale_init_value=layer_scale_init_value,
-                                                    expan_ratio=expan_ratio))
+                        stage_blocks.append(DilatedConv(dim=self.dims[i], k=3, dilation=self.dilation[i][j], drop_path=dp_rates[cur + j],
+                                                        layer_scale_init_value=layer_scale_init_value,
+                                                        expan_ratio=expan_ratio))
 
-            self.stages.append(nn.Sequential(*stage_blocks))
-            cur += self.depth[i]
+                self.stages.append(nn.Sequential(*stage_blocks))
+                cur += self.depth[i]
 
         self.apply(self._init_weights)
 
@@ -444,9 +451,12 @@ class LiteMono(nn.Module):
         x = self.stem2(torch.cat((x, x_down[0]), dim=1))
         tmp_x.append(x)
 
-        for s in range(len(self.stages[0])-1):
-            x = self.stages[0][s](x)
-        x = self.stages[0][-1](x)
+        if self.use_maxim:
+            x = self.stages[0](x)
+        else:
+            for s in range(len(self.stages[0])-1):
+                x = self.stages[0][s](x)
+            x = self.stages[0][-1](x)
         tmp_x.append(x)
         features.append(x)
 
@@ -456,9 +466,13 @@ class LiteMono(nn.Module):
             x = self.downsample_layers[i](x)
 
             tmp_x = [x]
-            for s in range(len(self.stages[i]) - 1):
-                x = self.stages[i][s](x)
-            x = self.stages[i][-1](x)
+
+            if self.use_maxim:
+                x = self.stages[i](x)
+            else:
+                for s in range(len(self.stages[i]) - 1):
+                    x = self.stages[i][s](x)
+                x = self.stages[i][-1](x)
             tmp_x.append(x)
 
             features.append(x)

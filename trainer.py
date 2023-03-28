@@ -55,7 +55,8 @@ class Trainer:
             self.opt.frame_ids.append("s")
 
         if self.opt.lite:
-            self.models["encoder"] = networks_lite.LiteMono(block_size=tuple(self.opt.block_size),
+            self.models["encoder"] = networks_lite.LiteMono(self.opt.maxim,
+                                                            block_size=tuple(self.opt.block_size),
                                                             grid_size=tuple(self.opt.grid_size),
                                                             residual=self.opt.res,
                                                             global_block_type=[self.opt.global_block_type for i in range(3)])

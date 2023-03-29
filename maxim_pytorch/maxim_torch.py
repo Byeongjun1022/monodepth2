@@ -568,11 +568,11 @@ class UNetEncoderBlock(nn.Module):  # input shape: n, c, h, w (pytorch default)
                                                lrelu_slope=self.lrelu_slope, use_bias=self.use_bias)
         self.channel_attention_block_11 = RCAB(features=self.num_channels, reduction=self.reduction,
                                                lrelu_slope=self.lrelu_slope, use_bias=self.use_bias)
-        self.cross_gating_block = CrossGatingBlock(x_features=self.num_channels, num_channels=self.num_channels,
-                                                   block_size=self.block_size,
-                                                   grid_size=self.grid_size, upsample_y=False, dropout_rate=self.drop,
-                                                   use_bias=self.use_bias, use_global_mlp=self.use_global_mlp)
-        self.Conv_1 = nn.Conv2d(self.num_channels, self.num_channels, kernel_size=(4, 4), stride=2, padding=1)
+        # self.cross_gating_block = CrossGatingBlock(x_features=self.num_channels, num_channels=self.num_channels,
+        #                                            block_size=self.block_size,
+        #                                            grid_size=self.grid_size, upsample_y=False, dropout_rate=self.drop,
+        #                                            use_bias=self.use_bias, use_global_mlp=self.use_global_mlp)
+        # self.Conv_1 = nn.Conv2d(self.num_channels, self.num_channels, kernel_size=(4, 4), stride=2, padding=1)
 
     def forward(self, x, skip=None, enc=None, dec=None):
         if skip is not None:

@@ -5,7 +5,7 @@
 #  python evaluate_depth.py --load_weights_folder  ~/tmp/mono_model_panoptic/models/weights_$var --eval_mono --panoptic_decoder
 #done
 
-for ((var=15 ; var < 21 ; var++));
+for ((var=5 ; var < 6 ; var++));
 do
-  python evaluate_depth.py --load_weights_folder  ~/tmp/lite_mab_find_num/models/weights_$var --eval_mono --lite
+  python evaluate_depth.py --load_weights_folder  ~/tmp/lite_mab_maxim/models/weights_$var --eval_mono --lite --maxim
 done

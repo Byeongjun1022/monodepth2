@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from timm.models.layers import DropPath
 import math
 import torch.cuda
-from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock
+from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock, CALayer
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -100,7 +100,6 @@ class LayerNorm(nn.Module):
             raise NotImplementedError
         self.normalized_shape = (normalized_shape,)
 
-
     def forward(self, x):
         if self.data_format == "channels_last":
             return F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
@@ -179,6 +178,7 @@ class DilatedConv(nn.Module):
     """
     A single Dilated Convolution layer in the Consecutive Dilated Convolutions (CDC) module.
     """
+
     def __init__(self, dim, k, dilation=1, stride=1, drop_path=0.,
                  layer_scale_init_value=1e-6, expan_ratio=6):
         """
@@ -226,6 +226,7 @@ class LGFI(nn.Module):
     """
     Local-Global Features Interaction
     """
+
     def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=6,
                  use_pos_emb=True, num_heads=6, qkv_bias=True, attn_drop=0., drop=0.):
         super().__init__()
@@ -277,25 +278,66 @@ class LGFI(nn.Module):
 
         return x
 
-class MAB(nn.Module):
-    def __init__(self, num_channels, residual, block_size=(4,4), grid_size=(4,4) ):
-        super().__init__()
-        self.block_size=block_size
-        self.grid_size=grid_size
-        self.num_channels=num_channels
-        self.residual=residual
 
-        self.mab=ResidualSplitHeadMultiAxisGmlpLayer(self.block_size, self.grid_size, self.num_channels)
+class LGFI_SE(nn.Module):
+    """
+    Replace cross covariance attention with SE layer
+    """
+
+    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=6):
+        super().__init__()
+
+        self.dim = dim
+        self.LayerNorm = LayerNorm(self.dim, eps=1e-6)
+        self.channel_attention = CALayer(features=self.dim)
+
+        self.norm = LayerNorm(self.dim, eps=1e-6)
+        self.pwconv1 = nn.Linear(self.dim, expan_ratio * self.dim)
+        self.act = nn.GELU()
+        self.pwconv2 = nn.Linear(expan_ratio * self.dim, self.dim)
+        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((self.dim)),
+                                  requires_grad=True) if layer_scale_init_value > 0 else None
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
-        input_= x
+        input_ = x
 
-        x= x.permute(0,2,3,1)  # (N, C, H, W) -> (N, H, W, C)
-        x= self.mab(x)
-        x= x.permute(0,3,1,2)
+        # B, C, H, W = x.shape
+        x = x.permute(0, 2, 3, 1)  # x: (N, C, H, W)  x_after: (N, H, W, C)
+        x = x + self.channel_attention(self.LayerNorm(x))
+
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
+
+        x = input_ + self.drop_path(x)
+
+        return x
+
+
+class MAB(nn.Module):
+    def __init__(self, num_channels, residual, block_size=(4, 4), grid_size=(4, 4)):
+        super().__init__()
+        self.block_size = block_size
+        self.grid_size = grid_size
+        self.num_channels = num_channels
+        self.residual = residual
+
+        self.mab = ResidualSplitHeadMultiAxisGmlpLayer(self.block_size, self.grid_size, self.num_channels)
+
+    def forward(self, x):
+        input_ = x
+
+        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+        x = self.mab(x)
+        x = x.permute(0, 3, 1, 2)
 
         if self.residual:
-            x= input_ + x
+            x = input_ + x
 
         return x
 
@@ -318,6 +360,7 @@ class LiteMono(nn.Module):
     """
     Lite-Mono
     """
+
     def __init__(self, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
@@ -366,7 +409,7 @@ class LiteMono(nn.Module):
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
 
         for g in global_block_type:
-            assert g in ['None', 'LGFI', 'MAB']
+            assert g in ['None', 'LGFI', 'MAB','LGFI_SE']
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -376,7 +419,7 @@ class LiteMono(nn.Module):
         )
 
         self.stem2 = nn.Sequential(
-            Conv(self.dims[0]+3, self.dims[0], kSize=3, stride=2, padding=1, bn_act=False),
+            Conv(self.dims[0] + 3, self.dims[0], kSize=3, stride=2, padding=1, bn_act=False),
         )
 
         self.downsample_layers.append(stem1)
@@ -387,15 +430,15 @@ class LiteMono(nn.Module):
 
         for i in range(2):
             downsample_layer = nn.Sequential(
-                Conv(self.dims[i]*2+3, self.dims[i+1], kSize=3, stride=2, padding=1, bn_act=False),
+                Conv(self.dims[i] * 2 + 3, self.dims[i + 1], kSize=3, stride=2, padding=1, bn_act=False),
             )
             self.downsample_layers.append(downsample_layer)
 
         self.stages = nn.ModuleList()
         if self.use_maxim:
-            channels=[48,80,128]
+            channels = [48, 80, 128]
             for i in range(3):
-                self.stages.append(UNetEncoderBlock(self.dims[i],channels[i], block_size=(2,2), grid_size=(2,2),
+                self.stages.append(UNetEncoderBlock(self.dims[i], channels[i], block_size=(2, 2), grid_size=(2, 2),
                                                     downsample=False))
         else:
             dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
@@ -410,14 +453,19 @@ class LiteMono(nn.Module):
                                                      use_pos_emb=use_pos_embd_xca[i], num_heads=heads[i],
                                                      layer_scale_init_value=layer_scale_init_value,
                                                      ))
+                        elif global_block_type[i] == 'LGFI_SE':
+                            stage_blocks.append(LGFI_SE(dim=self.dims[i], drop_path=dp_rates[cur+j],
+                                                        expan_ratio=expan_ratio
+                                                        ))
                         elif global_block_type[i] == 'MAB':
-                            stage_blocks.append(MAB(num_channels=self.dims[i],residual=self.residual,
+                            stage_blocks.append(MAB(num_channels=self.dims[i], residual=self.residual,
                                                     block_size=self.block_size, grid_size=self.grid_size))
 
                         else:
                             raise NotImplementedError
                     else:
-                        stage_blocks.append(DilatedConv(dim=self.dims[i], k=3, dilation=self.dilation[i][j], drop_path=dp_rates[cur + j],
+                        stage_blocks.append(DilatedConv(dim=self.dims[i], k=3, dilation=self.dilation[i][j],
+                                                        drop_path=dp_rates[cur + j],
                                                         layer_scale_init_value=layer_scale_init_value,
                                                         expan_ratio=expan_ratio))
 
@@ -454,7 +502,7 @@ class LiteMono(nn.Module):
         if self.use_maxim:
             x = self.stages[0](x)
         else:
-            for s in range(len(self.stages[0])-1):
+            for s in range(len(self.stages[0]) - 1):
                 x = self.stages[0][s](x)
             x = self.stages[0][-1](x)
         tmp_x.append(x)

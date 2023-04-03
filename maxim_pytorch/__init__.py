@@ -1,1 +1,1 @@
-from .maxim_torch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock
+from .maxim_torch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock, CALayer

@@ -42,7 +42,7 @@ class MonodepthOptions:
                                  help='LGFI or LGFI_SE or MAB',
                                  default='LGFI_SE')
         self.parser.add_argument("--res",
-                                 help='use residual path in MAB',
+                                 help='use residual path in MAB and LGFI_SE',
                                  action='store_true')
         self.parser.add_argument("--count",
                                  help='if set, just count the number of parameters',

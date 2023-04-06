@@ -10,3 +10,4 @@ Test_results/
 dgp/
 packnet_sfm
 eval_mult.sh
+check_dummy.py

@@ -284,7 +284,7 @@ class LGFI_SE(nn.Module):
     Replace cross covariance attention with SE layer
     """
 
-    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=6):
+    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=6, residual=True):
         super().__init__()
 
         self.dim = dim
@@ -298,6 +298,7 @@ class LGFI_SE(nn.Module):
         self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((self.dim)),
                                   requires_grad=True) if layer_scale_init_value > 0 else None
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.residual = residual
 
     def forward(self, x):
         input_ = x
@@ -314,7 +315,8 @@ class LGFI_SE(nn.Module):
             x = self.gamma * x
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
 
-        x = input_ + self.drop_path(x)
+        if self.residual:
+            x = input_ + self.drop_path(x)
 
         return x
 
@@ -455,7 +457,7 @@ class LiteMono(nn.Module):
                                                      ))
                         elif global_block_type[i] == 'LGFI_SE':
                             stage_blocks.append(LGFI_SE(dim=self.dims[i], drop_path=dp_rates[cur+j],
-                                                        expan_ratio=expan_ratio
+                                                        expan_ratio=expan_ratio, residual=self.residual
                                                         ))
                         elif global_block_type[i] == 'MAB':
                             stage_blocks.append(MAB(num_channels=self.dims[i], residual=self.residual,

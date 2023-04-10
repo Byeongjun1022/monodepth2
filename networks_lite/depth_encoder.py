@@ -533,7 +533,51 @@ class LiteMono(nn.Module):
         x = self.forward_features(x)
 
         return x
+class Conv2d_BN(nn.Module):
+    """Convolution with BN module."""
+    """This is for Global and Local interaction proposed in MPViT"""
+    def __init__(
+        self,
+        in_ch,
+        out_ch,
+        kernel_size=1,
+        stride=1,
+        pad=0,
+        dilation=1,
+        groups=1,
+        bn_weight_init=1,
+        norm_layer=nn.BatchNorm2d,
+        act_layer=None,
+    ):
+        super().__init__()
 
+        self.conv = torch.nn.Conv2d(in_ch,
+                                    out_ch,
+                                    kernel_size,
+                                    stride,
+                                    pad,
+                                    dilation,
+                                    groups,
+                                    bias=False)
+        self.bn = norm_layer(out_ch)
+        torch.nn.init.constant_(self.bn.weight, bn_weight_init)
+        torch.nn.init.constant_(self.bn.bias, 0)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # Note that there is no bias due to BN
+                fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(mean=0.0, std=np.sqrt(2.0 / fan_out))
+
+        self.act_layer = act_layer() if act_layer is not None else nn.Identity(
+        )
+
+    def forward(self, x):
+        """foward function"""
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.act_layer(x)
+
+        return x
 class LiteMono_parallel(nn.Module):
     """
     Lite-Mono
@@ -588,6 +632,11 @@ class LiteMono_parallel(nn.Module):
 
         for g in global_block_type:
             assert g in ['None', 'LGFI', 'MAB','LGFI_SE']
+
+        self.GLI_layers = nn.ModuleList()
+        for i in range(len(self.dims)):
+            num_in = self.dims[i] * len(self.dilation[i])
+            self.GLI_layers.append(Conv2d_BN(num_in, self.dims[i], act_layer=nn.Hardswish))
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -680,8 +729,13 @@ class LiteMono_parallel(nn.Module):
         if self.use_maxim:
             x = self.stages[0](x)
         else:
+            tmp_x_parallel = []
             for s in range(len(self.stages[0]) - 1):
-                x = self.stages[0][s](x)
+                x_parallel = self.stages[0][s](x)
+                tmp_x_parallel.append(x_parallel)
+            x = torch.cat(tmp_x_parallel, dim=1)
+            x = self.GLI_layers[0](x)
+            tmp_x_parallel.clear()
             x = self.stages[0][-1](x)
         tmp_x.append(x)
         features.append(x)
@@ -697,7 +751,11 @@ class LiteMono_parallel(nn.Module):
                 x = self.stages[i](x)
             else:
                 for s in range(len(self.stages[i]) - 1):
-                    x = self.stages[i][s](x)
+                    x_parallel = self.stages[i][s](x)
+                    tmp_x_parallel.append(x_parallel)
+                x = torch.cat(tmp_x_parallel, dim=1)
+                x = self.GLI_layers[i](x)
+                tmp_x_parallel.clear()
                 x = self.stages[i][-1](x)
             tmp_x.append(x)
 

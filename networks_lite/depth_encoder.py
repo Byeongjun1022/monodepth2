@@ -533,3 +533,179 @@ class LiteMono(nn.Module):
         x = self.forward_features(x)
 
         return x
+
+class LiteMono_parallel(nn.Module):
+    """
+    Lite-Mono
+    """
+
+    def __init__(self, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
+                 global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
+                 drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
+                 heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
+
+        super().__init__()
+        self.residual = residual
+        self.block_size = block_size
+        self.grid_size = grid_size
+        self.use_maxim = maxim
+
+        if model == 'lite-mono':
+            self.num_ch_enc = np.array([48, 80, 128])
+            self.depth = [4, 4, 10]
+            self.dims = [48, 80, 128]
+            if height == 192 and width == 640:
+                self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 1, 2, 3, 2, 4, 6]]
+            elif height == 320 and width == 1024:
+                self.dilation = [[1, 2, 5], [1, 2, 5], [1, 2, 5, 1, 2, 5, 2, 4, 10]]
+
+        elif model == 'lite-mono-small':
+            self.num_ch_enc = np.array([48, 80, 128])
+            self.depth = [4, 4, 7]
+            self.dims = [48, 80, 128]
+            if height == 192 and width == 640:
+                self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
+            elif height == 320 and width == 1024:
+                self.dilation = [[1, 2, 5], [1, 2, 5], [1, 2, 5, 2, 4, 10]]
+
+        elif model == 'lite-mono-tiny':
+            self.num_ch_enc = np.array([32, 64, 128])
+            self.depth = [4, 4, 7]
+            self.dims = [32, 64, 128]
+            if height == 192 and width == 640:
+                self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
+            elif height == 320 and width == 1024:
+                self.dilation = [[1, 2, 5], [1, 2, 5], [1, 2, 5, 2, 4, 10]]
+
+        elif model == 'lite-mono-8m':
+            self.num_ch_enc = np.array([64, 128, 224])
+            self.depth = [4, 4, 10]
+            self.dims = [64, 128, 224]
+            if height == 192 and width == 640:
+                self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
+            elif height == 320 and width == 1024:
+                self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
+
+        for g in global_block_type:
+            assert g in ['None', 'LGFI', 'MAB','LGFI_SE']
+
+        self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
+        stem1 = nn.Sequential(
+            Conv(in_chans, self.dims[0], kSize=3, stride=2, padding=1, bn_act=True),
+            Conv(self.dims[0], self.dims[0], kSize=3, stride=1, padding=1, bn_act=True),
+            Conv(self.dims[0], self.dims[0], kSize=3, stride=1, padding=1, bn_act=True),
+        )
+
+        self.stem2 = nn.Sequential(
+            Conv(self.dims[0] + 3, self.dims[0], kSize=3, stride=2, padding=1, bn_act=False),
+        )
+
+        self.downsample_layers.append(stem1)
+
+        self.input_downsample = nn.ModuleList()
+        for i in range(1, 5):
+            self.input_downsample.append(AvgPool(i))
+
+        for i in range(2):
+            downsample_layer = nn.Sequential(
+                Conv(self.dims[i] * 2 + 3, self.dims[i + 1], kSize=3, stride=2, padding=1, bn_act=False),
+            )
+            self.downsample_layers.append(downsample_layer)
+
+        self.stages = nn.ModuleList()
+        if self.use_maxim:
+            channels = [48, 80, 128]
+            for i in range(3):
+                self.stages.append(UNetEncoderBlock(self.dims[i], channels[i], block_size=(2, 2), grid_size=(2, 2),
+                                                    downsample=False))
+        else:
+            dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
+            cur = 0
+            for i in range(3):
+                stage_blocks = []
+                for j in range(self.depth[i]):
+                    if j > self.depth[i] - global_block[i] - 1:
+                        if global_block_type[i] == 'LGFI':
+                            stage_blocks.append(LGFI(dim=self.dims[i], drop_path=dp_rates[cur + j],
+                                                     expan_ratio=expan_ratio,
+                                                     use_pos_emb=use_pos_embd_xca[i], num_heads=heads[i],
+                                                     layer_scale_init_value=layer_scale_init_value,
+                                                     ))
+                        elif global_block_type[i] == 'LGFI_SE':
+                            stage_blocks.append(LGFI_SE(dim=self.dims[i], drop_path=dp_rates[cur+j],
+                                                        expan_ratio=expan_ratio, residual=self.residual
+                                                        ))
+                        elif global_block_type[i] == 'MAB':
+                            stage_blocks.append(MAB(num_channels=self.dims[i], residual=self.residual,
+                                                    block_size=self.block_size, grid_size=self.grid_size))
+
+                        else:
+                            raise NotImplementedError
+                    else:
+                        stage_blocks.append(DilatedConv(dim=self.dims[i], k=3, dilation=self.dilation[i][j],
+                                                        drop_path=dp_rates[cur + j],
+                                                        layer_scale_init_value=layer_scale_init_value,
+                                                        expan_ratio=expan_ratio))
+
+                self.stages.append(nn.Sequential(*stage_blocks))
+                cur += self.depth[i]
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+
+        elif isinstance(m, (LayerNorm, nn.LayerNorm)):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
+
+    def forward_features(self, x):
+        features = []
+        x = (x - 0.45) / 0.225
+
+        x_down = []
+        for i in range(4):
+            x_down.append(self.input_downsample[i](x))
+
+        tmp_x = []
+        x = self.downsample_layers[0](x)
+        x = self.stem2(torch.cat((x, x_down[0]), dim=1))
+        tmp_x.append(x)
+
+        if self.use_maxim:
+            x = self.stages[0](x)
+        else:
+            for s in range(len(self.stages[0]) - 1):
+                x = self.stages[0][s](x)
+            x = self.stages[0][-1](x)
+        tmp_x.append(x)
+        features.append(x)
+
+        for i in range(1, 3):
+            tmp_x.append(x_down[i])
+            x = torch.cat(tmp_x, dim=1)
+            x = self.downsample_layers[i](x)
+
+            tmp_x = [x]
+
+            if self.use_maxim:
+                x = self.stages[i](x)
+            else:
+                for s in range(len(self.stages[i]) - 1):
+                    x = self.stages[i][s](x)
+                x = self.stages[i][-1](x)
+            tmp_x.append(x)
+
+            features.append(x)
+
+        return features
+
+    def forward(self, x):
+        x = self.forward_features(x)
+
+        return x

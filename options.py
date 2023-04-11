@@ -25,6 +25,9 @@ class MonodepthOptions:
         self.parser.add_argument("--lite",
                                  help='if set, use the encoders and decoders from mono-lite',
                                  action='store_true')
+        self.parser.add_argument("--parallel",
+                                 help='if set, use the parallel mono-lite',
+                                 action='store_true')
         self.parser.add_argument("--ddad",
                                  help='if set, use ddad dataset',
                                  action="store_true"
@@ -40,7 +43,7 @@ class MonodepthOptions:
         self.parser.add_argument("--global_block_type",
                                  type=str,
                                  help='LGFI or LGFI_SE or MAB',
-                                 default='LGFI_SE')
+                                 default='LGFI')
         self.parser.add_argument("--res",
                                  help='use residual path in MAB and LGFI_SE',
                                  action='store_true')
@@ -66,7 +69,8 @@ class MonodepthOptions:
                                  type=str,
                                  help="path to the training data",
                                  # default=os.path.join(file_dir, "kitti_data")
-                                 default='/mnt/study/depth/Datasets/kitti_data')
+                                 # default='/mnt/study/depth/Datasets/kitti_data')
+                                 default='/home/bj/Study/depth/Datasets/kitti_data')
         self.parser.add_argument("--log_dir",
                                  type=str,
                                  help="log directory",

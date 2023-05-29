@@ -56,17 +56,26 @@ class Trainer:
             self.opt.frame_ids.append("s")
 
         if self.opt.lite:
-            # self.models["encoder"] = networks_lite.LiteMono(self.opt.maxim,
-            #                                                 block_size=tuple(self.opt.block_size),
-            #                                                 grid_size=tuple(self.opt.grid_size),
-            #                                                 residual=self.opt.res,
-            #                                                 global_block_type=[self.opt.global_block_type for i in range(3)])
-            self.models["encoder"] = networks_lite.LiteMono_parallel(self.opt.maxim,
-                                                                     block_size=tuple(self.opt.block_size),
-                                                                     grid_size=tuple(self.opt.grid_size),
-                                                                     residual=self.opt.res,
-                                                                     global_block_type=[self.opt.global_block_type for i in range(3)])
+            self.models["encoder"] = networks_lite.LiteMono(self.opt.maxim,
+                                                            block_size=tuple(self.opt.block_size),
+                                                            grid_size=tuple(self.opt.grid_size),
+                                                            residual=self.opt.res,
+                                                            global_block_type=[self.opt.global_block_type for i in range(3)])
+            # self.models["encoder"] = networks_lite.LiteMono_parallel(self.opt.maxim,
+            #                                                          block_size=tuple(self.opt.block_size),
+            #                                                          grid_size=tuple(self.opt.grid_size),
+            #                                                          residual=self.opt.res,
+            #                                                          global_block_type=[self.opt.global_block_type for i in range(3)])
             self.models["encoder"].to(self.device)
+
+            for n, param in self.models["encoder"].stages.named_parameters():
+                if 'BlockGatingUnit' in n and 'Dense' in n:
+                    if 'weight' in n:
+                        nn.init.zeros_(param)
+                    if 'bias' in n:
+                        nn.init.ones_(param)
+                    print(n, param)
+
             self.parameters_to_train += list(self.models["encoder"].parameters())
 
             self.models["depth"] = networks_lite.DepthDecoder(
@@ -470,7 +479,7 @@ class Trainer:
                 outputs[("color", frame_id, scale)] = F.grid_sample(
                     inputs[("color", frame_id, source_scale)],
                     outputs[("sample", frame_id, scale)],
-                    padding_mode="border")
+                    padding_mode="border", align_corners=True)
 
                 if not self.opt.disable_automasking:
                     outputs[("color_identity", frame_id, scale)] = \

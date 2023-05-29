@@ -379,6 +379,7 @@ class LiteMono(nn.Module):
             self.depth = [4, 4, 10]
             self.dims = [48, 80, 128]
             if height == 192 and width == 640:
+                # self.dilation = [[1, 1, 1], [1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1]]
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 1, 2, 3, 2, 4, 6]]
             elif height == 320 and width == 1024:
                 self.dilation = [[1, 2, 5], [1, 2, 5], [1, 2, 5, 1, 2, 5, 2, 4, 10]]
@@ -600,6 +601,7 @@ class LiteMono_parallel(nn.Module):
             self.depth = [4, 4, 10]
             self.dims = [48, 80, 128]
             if height == 192 and width == 640:
+                # self.dilation = [[1, 1, 1], [1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1]]
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 1, 2, 3, 2, 4, 6]]
                 # self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
             elif height == 320 and width == 1024:

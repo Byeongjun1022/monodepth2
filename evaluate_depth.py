@@ -85,7 +85,7 @@ def evaluate(opt):
         encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
         decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
 
-        encoder_dict = torch.load(encoder_path)
+        encoder_dict = torch.load(encoder_path, map_location=f'cuda:{opt.gpu_num}')
 
         if opt.ddad:
             dataset=datasets.DGPDataset(data_path=opt.json_path, split='val',
@@ -130,7 +130,7 @@ def evaluate(opt):
 
         model_dict = encoder.state_dict()
         encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
-        depth_decoder.load_state_dict(torch.load(decoder_path))
+        depth_decoder.load_state_dict(torch.load(decoder_path, map_location=f'cuda:{opt.gpu_num}'))
 
         encoder.cuda()
         encoder.eval()

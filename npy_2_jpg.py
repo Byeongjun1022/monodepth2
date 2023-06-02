@@ -35,7 +35,7 @@ def npy_to_jpg(args):
         img.save(os.path.join(args.output_pth, model_name, f'disp_{i}.jpg'))
 
 def npy_to_jpg_monodepth_2(args):
-    model_name = args.npy_pth.split('/')[-4]+'_2'
+    model_name = args.npy_pth.split('/')[-4]
     if not os.path.exists(os.path.join(args.output_pth, model_name)):
         print('Since output path does not exist, make output folder')
         os.makedirs(os.path.join(args.output_pth, model_name))

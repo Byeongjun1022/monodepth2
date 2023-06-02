@@ -322,7 +322,7 @@ class LGFI_SE(nn.Module):
 
 
 class MAB(nn.Module):
-    def __init__(self, num_channels, residual, block_size=(4, 4), grid_size=(4, 4)):
+    def __init__(self, num_channels, residual, block_size=(4, 4), grid_size=(4, 4), **kwargs):
         super().__init__()
         self.block_size = block_size
         self.grid_size = grid_size
@@ -331,10 +331,23 @@ class MAB(nn.Module):
 
         self.mab = ResidualSplitHeadMultiAxisGmlpLayer(self.block_size, self.grid_size, self.num_channels)
 
+        self.se = False
+        if kwargs is not None:
+            if kwargs['SE'] == True:
+                self.se = True
+                self.LayerNorm = LayerNorm(self.num_channels, eps=1e-6)
+                self.channel_attention = CALayer(self.num_channels)
+                print("channel attention is applied")
+    
+
     def forward(self, x):
         input_ = x
 
         x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+        
+        if self.se:
+            x = x + self.channel_attention(self.LayerNorm(x))
+
         x = self.mab(x)
         x = x.permute(0, 3, 1, 2)
 
@@ -462,7 +475,8 @@ class LiteMono(nn.Module):
                                                         ))
                         elif global_block_type[i] == 'MAB':
                             stage_blocks.append(MAB(num_channels=self.dims[i], residual=self.residual,
-                                                    block_size=self.block_size, grid_size=self.grid_size))
+                                                    block_size=self.block_size, grid_size=self.grid_size,
+                                                    SE = kwargs['SE']))
 
                         else:
                             raise NotImplementedError

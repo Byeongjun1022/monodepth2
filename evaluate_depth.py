@@ -139,6 +139,7 @@ def evaluate(opt):
         depth_decoder.eval()
 
         pred_disps = []
+        pred_disps_for_vis = []
 
         print("-> Computing predictions with size {}x{}".format(
             encoder_dict['width'], encoder_dict['height']))
@@ -157,16 +158,19 @@ def evaluate(opt):
                     output = depth_decoder(encoder(input_color))
 
                 pred_disp, _ = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
-                # pred_disp = output[("disp", 0)]
+                pred_disp_for_vis = output[("disp", 0)]
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
+                pred_disp_for_vis = pred_disp_for_vis.cpu()[:, 0].numpy()
 
                 if opt.post_process:
                     N = pred_disp.shape[0] // 2
                     pred_disp = batch_post_process_disparity(pred_disp[:N], pred_disp[N:, :, ::-1])
 
                 pred_disps.append(pred_disp)
+                pred_disps_for_vis.append(pred_disp_for_vis)
 
         pred_disps = np.concatenate(pred_disps)
+        pred_disps_for_vis = np.concatenate(pred_disps_for_vis)
 
     else:
         # Load predictions from file
@@ -183,7 +187,8 @@ def evaluate(opt):
         output_path = os.path.join(
             opt.load_weights_folder, "disps_{}_split.npy".format(opt.eval_split))
         print("-> Saving predicted disparities to ", output_path)
-        np.save(output_path, pred_disps)
+        np.save(output_path, pred_disps_for_vis)
+        # np.save(output_path, pred_disps)
 
     if opt.no_eval:
         print("-> Evaluation disabled. Done.")

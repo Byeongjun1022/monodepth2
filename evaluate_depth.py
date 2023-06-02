@@ -111,7 +111,8 @@ def evaluate(opt):
                                                  block_size=tuple(opt.block_size),
                                                  grid_size=tuple(opt.grid_size),
                                                  residual=opt.res,
-                                                 global_block_type=[opt.global_block_type for i in range(3)])
+                                                 global_block_type=[opt.global_block_type for i in range(3)],
+                                                 SE=opt.mab_se)
         else:
             encoder = networks.ResnetEncoder(opt.num_layers, False)
 

@@ -60,7 +60,8 @@ class Trainer:
                                                             block_size=tuple(self.opt.block_size),
                                                             grid_size=tuple(self.opt.grid_size),
                                                             residual=self.opt.res,
-                                                            global_block_type=[self.opt.global_block_type for i in range(3)])
+                                                            global_block_type=[self.opt.global_block_type for i in range(3)],
+                                                            SE = self.opt.mab_se)
             # self.models["encoder"] = networks_lite.LiteMono_parallel(self.opt.maxim,
             #                                                          block_size=tuple(self.opt.block_size),
             #                                                          grid_size=tuple(self.opt.grid_size),
@@ -74,7 +75,7 @@ class Trainer:
                         nn.init.zeros_(param)
                     if 'bias' in n:
                         nn.init.ones_(param)
-                    print(n, param)
+                    # print(n, param)
 
             self.parameters_to_train += list(self.models["encoder"].parameters())
 
@@ -159,9 +160,9 @@ class Trainer:
             self.parameters_to_train += list(self.models["predictive_mask"].parameters())
 
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
-        self.model_lr_scheduler = optim.lr_scheduler.StepLR(
-            self.model_optimizer, self.opt.scheduler_step_size, 0.1)
-        # self.model_lr_scheduler=optim.lr_scheduler.MultiStepLR(self.model_optimizer,milestones=[15,18,22,25],gamma=0.5)
+        # self.model_lr_scheduler = optim.lr_scheduler.StepLR(
+        #     self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+        self.model_lr_scheduler=optim.lr_scheduler.MultiStepLR(self.model_optimizer,milestones=[15,18,22,25],gamma=0.5)
 
         if self.opt.load_weights_folder is not None:
             self.load_model()
@@ -275,6 +276,7 @@ class Trainer:
         self.step = 0
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
+            self.writers['train'].add_scalar("learning_rate", self.model_optimizer.param_groups[0]['lr'], self.epoch)
             self.run_epoch()
             if (self.epoch + 1) % self.opt.save_frequency == 0:
                 self.save_model()

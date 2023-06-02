@@ -64,6 +64,9 @@ class MonodepthOptions:
         self.parser.add_argument("--maxim",
                                  help='use maxim instead of models proposed in mono_lite',
                                  action='store_true')
+        self.parser.add_argument("--mab_se",
+                                 help='use squeeze and excitation module in MAB',
+                                 action='store_true')
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,
@@ -74,7 +77,8 @@ class MonodepthOptions:
         self.parser.add_argument("--log_dir",
                                  type=str,
                                  help="log directory",
-                                 default=os.path.join(os.path.expanduser("~"), "tmp"))
+                              #    default=os.path.join(os.path.expanduser("~"), "tmp"))
+                                 default='/mnt_2/tmp')
 
         self.parser.add_argument("--path_for_continue",
                                  type=str,

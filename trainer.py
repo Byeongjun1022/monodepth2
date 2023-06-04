@@ -28,7 +28,20 @@ import panoptic_decoder
 import json
 import time
 from IPython import embed
+from thop import clever_format
+from thop import profile
 
+def profile_once(encoder, decoder, x):
+    x_e = x[0, :, :, :].unsqueeze(0)
+    x_d = encoder(x_e)
+    flops_e, params_e = profile(encoder, inputs=(x_e, ), verbose=False)
+    flops_d, params_d = profile(decoder, inputs=(x_d, ), verbose=False)
+
+    flops, params = clever_format([flops_e + flops_d, params_e + params_d], "%.3f")
+    flops_e, params_e = clever_format([flops_e, params_e], "%.3f")
+    flops_d, params_d = clever_format([flops_d, params_d], "%.3f")
+
+    return flops, params, flops_e, params_e, flops_d, params_d
 
 class Trainer:
     def __init__(self, options):
@@ -274,6 +287,10 @@ class Trainer:
         """
         self.epoch = 0
         self.step = 0
+        random_image =  torch.rand(1,3,192,640).to(self.device)
+        flops, params, flops_e, params_e, flops_d, params_d = profile_once(self.models["encoder"], self.models["depth"], random_image)
+        print("\n  " + ("flops: {0}, params: {1}, flops_e: {2}, params_e:{3}, flops_d:{4}, params_d:{5}").format(flops, params, flops_e, params_e, flops_d, params_d))
+
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             self.writers['train'].add_scalar("learning_rate", self.model_optimizer.param_groups[0]['lr'], self.epoch)

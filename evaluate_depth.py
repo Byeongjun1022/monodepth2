@@ -15,6 +15,9 @@ import networks
 import json
 import panoptic_decoder
 import networks_lite
+import time
+from thop import clever_format
+from thop import profile
 
 cv2.setNumThreads(0)  # This speeds up evaluation 5x on our unix systems (OpenCV 3.3.1)
 
@@ -26,6 +29,24 @@ splits_dir = os.path.join(os.path.dirname(__file__), "splits")
 # to convert our stereo predictions to real-world scale we multiply our depths by 5.4.
 STEREO_SCALE_FACTOR = 5.4
 
+def profile_once(encoder, decoder, x):
+    x_e = x[0, :, :, :].unsqueeze(0)
+    x_d = encoder(x_e)
+    flops_e, params_e = profile(encoder, inputs=(x_e, ), verbose=False)
+    flops_d, params_d = profile(decoder, inputs=(x_d, ), verbose=False)
+
+    flops, params = clever_format([flops_e + flops_d, params_e + params_d], "%.3f")
+    flops_e, params_e = clever_format([flops_e, params_e], "%.3f")
+    flops_d, params_d = clever_format([flops_d, params_d], "%.3f")
+
+    return flops, params, flops_e, params_e, flops_d, params_d
+
+
+def time_sync():
+    # PyTorch-accurate time
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    return time.time()
 
 def compute_errors(gt, pred):
     """Computation of error metrics between predicted and ground truth depths
@@ -151,11 +172,14 @@ def evaluate(opt):
                 if opt.post_process:
                     # Post-processed results require each image to have two forward passes
                     input_color = torch.cat((input_color, torch.flip(input_color, [3])), 0)
-
+                
+                flops, params, flops_e, params_e, flops_d, params_d = profile_once(encoder, depth_decoder, input_color)
+                t1 = time_sync()
                 if opt.lite:
                     output,_ = depth_decoder(encoder(input_color))
                 else:
                     output = depth_decoder(encoder(input_color))
+                t2 = time_sync()
 
                 pred_disp, _ = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
                 pred_disp_for_vis = output[("disp", 0)]
@@ -278,6 +302,7 @@ def evaluate(opt):
 
     print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
     print(("&{: 8.3f}  " * 7).format(*mean_errors.tolist()) + "\\\\")
+    print("\n  " + ("flops: {0}, params: {1}, flops_e: {2}, params_e:{3}, flops_d:{4}, params_d:{5}").format(flops, params, flops_e, params_e, flops_d, params_d))
     print("\n-> Done!")
 
 

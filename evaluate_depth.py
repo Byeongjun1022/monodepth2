@@ -151,8 +151,10 @@ def evaluate(opt):
             depth_decoder = networks.DepthDecoder(encoder.num_ch_enc)
 
         model_dict = encoder.state_dict()
+        model_dict_dec = depth_decoder.state_dict()
+        decoder_dict = torch.load(decoder_path, map_location=f'cuda:{opt.gpu_num}')
         encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
-        depth_decoder.load_state_dict(torch.load(decoder_path, map_location=f'cuda:{opt.gpu_num}'))
+        depth_decoder.load_state_dict({k: v for k, v in decoder_dict.items() if k in model_dict_dec})
 
         encoder.cuda()
         encoder.eval()

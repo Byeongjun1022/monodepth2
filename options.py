@@ -67,6 +67,21 @@ class MonodepthOptions:
         self.parser.add_argument("--mab_se",
                                  help='use squeeze and excitation module in MAB',
                                  action='store_true')
+        self.parser.add_argument("--adamw",
+                                 help='use respective adamw for depth and pose network',
+                                 action='store_true')
+        self.parser.add_argument("--weight_decay",
+                                 type=float,
+                                 help="weight decay in AdamW",
+                                 default=1e-2)
+        self.parser.add_argument("--lr",
+                                 nargs="+",
+                                 type=float,
+                                 help="learning rates of DepthNet and PoseNet. "
+                                      "Initial learning rate, "
+                                      "minimum learning rate, "
+                                      "First cycle step size.",
+                                 default=[0.0001, 5e-6, 31, 0.0001, 1e-5, 31])
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

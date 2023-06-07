@@ -30,6 +30,7 @@ import time
 from IPython import embed
 from thop import clever_format
 from thop import profile
+from linear_warmup_cosine_annealing_warm_restarts_weight_decay import ChainedScheduler
 
 def profile_once(encoder, decoder, x):
     x_e = x[0, :, :, :].unsqueeze(0)
@@ -54,6 +55,7 @@ class Trainer:
 
         self.models = {}
         self.parameters_to_train = []
+        self.parameters_to_train_pose = []
 
         self.device = torch.device("cpu" if self.opt.no_cuda else f"cuda:{self.opt.gpu_num}")
 
@@ -128,7 +130,11 @@ class Trainer:
                         num_input_images=self.num_pose_frames)
 
                     self.models["pose_encoder"].to(self.device)
-                    self.parameters_to_train += list(self.models["pose_encoder"].parameters())
+                    
+                    if self.opt.adamw:
+                        self.parameters_to_train_pose += list(self.models["pose_encoder"].parameters())
+                    else:
+                        self.parameters_to_train += list(self.models["pose_encoder"].parameters())
 
                     self.models["pose"] = networks_lite.PoseDecoder(
                         self.models["pose_encoder"].num_ch_enc,
@@ -158,7 +164,11 @@ class Trainer:
                     self.num_input_frames if self.opt.pose_model_input == "all" else 2)
 
             self.models["pose"].to(self.device)
-            self.parameters_to_train += list(self.models["pose"].parameters())
+            if self.opt.adamw:
+                self.parameters_to_train_pose += list(self.models["pose"].parameters())
+            else:
+                self.parameters_to_train += list(self.models["pose"].parameters())
+            
 
         if self.opt.predictive_mask:
             assert self.opt.disable_automasking, \
@@ -172,10 +182,35 @@ class Trainer:
             self.models["predictive_mask"].to(self.device)
             self.parameters_to_train += list(self.models["predictive_mask"].parameters())
 
-        self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
-        # self.model_lr_scheduler = optim.lr_scheduler.StepLR(
-        #     self.model_optimizer, self.opt.scheduler_step_size, 0.1)
-        self.model_lr_scheduler=optim.lr_scheduler.MultiStepLR(self.model_optimizer,milestones=[15,18,22,25],gamma=0.5)
+        if self.opt.adamw:
+            self.model_optimizer = optim.AdamW(self.parameters_to_train, self.opt.lr[0], weight_decay=self.opt.weight_decay)        
+            self.model_pose_optimizer = optim.AdamW(self.parameters_to_train_pose, self.opt.lr[3], weight_decay=self.opt.weight_decay)
+
+            self.model_lr_scheduler = ChainedScheduler(
+                                self.model_optimizer,
+                                T_0=int(self.opt.lr[2]),
+                                T_mul=1,
+                                eta_min=self.opt.lr[1],
+                                last_epoch=-1,
+                                max_lr=self.opt.lr[0],
+                                warmup_steps=0,
+                                gamma=0.9
+                            )
+            self.model_pose_lr_scheduler = ChainedScheduler(
+                self.model_pose_optimizer,
+                T_0=int(self.opt.lr[5]),
+                T_mul=1,
+                eta_min=self.opt.lr[4],
+                last_epoch=-1,
+                max_lr=self.opt.lr[3],
+                warmup_steps=0,
+                gamma=0.9
+            )
+        else:
+            self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
+            self.model_lr_scheduler = optim.lr_scheduler.StepLR(
+                self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+            # self.model_lr_scheduler=optim.lr_scheduler.MultiStepLR(self.model_optimizer,milestones=[15,18,22,25],gamma=0.5)
 
         if self.opt.load_weights_folder is not None:
             self.load_model()
@@ -302,6 +337,8 @@ class Trainer:
         """Run a single epoch of training and validation
         """
         self.model_lr_scheduler.step()
+        if self.opt.adamw:
+            self.model_pose_lr_scheduler.step()
 
         print("Training")
         self.set_train()
@@ -313,8 +350,12 @@ class Trainer:
             outputs, losses = self.process_batch(inputs)
 
             self.model_optimizer.zero_grad()
+            if self.opt.adamw:
+                self.model_pose_optimizer.zero_grad()
             losses["loss"].backward()
             self.model_optimizer.step()
+            if self.opt.adamw:
+                self.model_pose_optimizer.step()
 
             duration = time.time() - before_op_time
 
@@ -716,6 +757,10 @@ class Trainer:
         save_path = os.path.join(save_folder, "{}.pth".format("adam"))
         torch.save(self.model_optimizer.state_dict(), save_path)
 
+        if self.opt.adamw:
+            save_path = os.path.join(save_folder, "{}.pth".format("adam_pose"))
+            torch.save(self.model_pose_optimizer.state_dict(), save_path)
+
     def load_model(self):
         """Load model(s) from disk
         """
@@ -736,9 +781,16 @@ class Trainer:
 
         # loading adam state
         optimizer_load_path = os.path.join(self.opt.load_weights_folder, "adam.pth")
+        if self.opt.adamw:
+            optimizer_pose_load_path = os.path.join(self.opt.load_weights_folder, "adam_pose.pth")
+
         if os.path.isfile(optimizer_load_path):
             print("Loading Adam weights")
             optimizer_dict = torch.load(optimizer_load_path)
             self.model_optimizer.load_state_dict(optimizer_dict)
+            if self.opt.adamw:
+                optimizer_pose_dict = torch.load(optimizer_pose_load_path)
+                self.model_pose_optimizer.load_state_dict(optimizer_pose_dict)
+
         else:
             print("Cannot find Adam weights so Adam is randomly initialized")

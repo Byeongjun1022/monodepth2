@@ -362,6 +362,7 @@ class MaxViT_attention(nn.Module):
         super().__init__()
 
         self.attention = MaxViT_attention_bj(num_channels, dim_head, window_size)
+        self.num_channels = num_channels
 
         self.se = False
         if kwargs is not None:
@@ -373,7 +374,9 @@ class MaxViT_attention(nn.Module):
     
     def forward(self, x):
         if self.se:
+            x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
             x = x + self.channel_attention(self.LayerNorm(x))
+            x = x.permute(0, 3, 1, 2)
 
         x = self.attention(x)
 

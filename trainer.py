@@ -47,7 +47,7 @@ def profile_once(encoder, decoder, x):
 class Trainer:
     def __init__(self, options):
         self.opt = options
-        self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name+'_'+time.strftime('%Y-%m-%d %H:%M:%S'))
+        self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name+'_'+time.strftime('%Y-%m-%d%H:%M:%S'))
 
         # checking height and width are multiples of 32
         assert self.opt.height % 32 == 0, "'height' must be a multiple of 32"
@@ -71,7 +71,8 @@ class Trainer:
             self.opt.frame_ids.append("s")
 
         if self.opt.lite:
-            self.models["encoder"] = networks_lite.LiteMono(self.opt.maxim,
+            self.models["encoder"] = networks_lite.LiteMono(self.opt,
+                                                            self.opt.maxim,
                                                             block_size=tuple(self.opt.block_size),
                                                             grid_size=tuple(self.opt.grid_size),
                                                             residual=self.opt.res,

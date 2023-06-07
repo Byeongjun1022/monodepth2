@@ -402,12 +402,13 @@ class LiteMono(nn.Module):
     Lite-Mono
     """
 
-    def __init__(self, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
+    def __init__(self, opt, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
                  heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
 
         super().__init__()
+        self.opt = opt
         self.residual = residual
         self.block_size = block_size
         self.grid_size = grid_size
@@ -507,7 +508,7 @@ class LiteMono(nn.Module):
                             stage_blocks.append(UNetEncoderBlock(self.dims[i], self.dims[i], block_size=(2, 2), grid_size=(2, 2),
                                                                  downsample=False))
                         elif global_block_type[i] == 'Max':
-                            stage_blocks.append(MaxViT_attention(self.dims[i], SE = kwargs['SE']))
+                            stage_blocks.append(MaxViT_attention(self.dims[i], self.opt.window_size, self.opt.dim_head, SE = kwargs['SE']))
                             print('Max is applied')
 
                         else:

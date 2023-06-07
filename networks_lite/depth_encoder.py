@@ -6,6 +6,7 @@ from timm.models.layers import DropPath
 import math
 import torch.cuda
 from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock, CALayer
+from max_vit import MaxViT_attention_bj 
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -356,6 +357,28 @@ class MAB(nn.Module):
 
         return x
 
+class MaxViT_attention(nn.Module):
+    def __init__(self, num_channels, window_size=2, dim_head=8, **kwargs):
+        super().__init__()
+
+        self.attention = MaxViT_attention_bj(num_channels, dim_head, window_size)
+
+        self.se = False
+        if kwargs is not None:
+            if kwargs['SE'] == True:
+                self.se = True
+                self.LayerNorm = LayerNorm(self.num_channels, eps=1e-6)
+                self.channel_attention = CALayer(self.num_channels)
+                print("channel attention is applied")
+    
+    def forward(self, x):
+        if self.se:
+            x = x + self.channel_attention(self.LayerNorm(x))
+
+        x = self.attention(x)
+
+        return x
+
 
 class AvgPool(nn.Module):
     def __init__(self, ratio):
@@ -425,7 +448,7 @@ class LiteMono(nn.Module):
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
 
         for g in global_block_type:
-            assert g in ['None', 'LGFI', 'MAB','LGFI_SE']
+            assert g in ['None', 'LGFI', 'MAB','LGFI_SE', 'MAXIM', 'Max']
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -477,6 +500,12 @@ class LiteMono(nn.Module):
                             stage_blocks.append(MAB(num_channels=self.dims[i], residual=self.residual,
                                                     block_size=self.block_size, grid_size=self.grid_size,
                                                     SE = kwargs['SE']))
+                        elif global_block_type[i] == 'MAXIM':
+                            stage_blocks.append(UNetEncoderBlock(self.dims[i], self.dims[i], block_size=(2, 2), grid_size=(2, 2),
+                                                                 downsample=False))
+                        elif global_block_type[i] == 'Max':
+                            stage_blocks.append(MaxViT_attention(self.dims[i], SE = kwargs['SE']))
+                            print('Max is applied')
 
                         else:
                             raise NotImplementedError

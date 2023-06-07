@@ -42,7 +42,7 @@ class MonodepthOptions:
                                  default='/mnt/study/depth/DDAD/gt_val/gt_depths.npz')
         self.parser.add_argument("--global_block_type",
                                  type=str,
-                                 help='LGFI or LGFI_SE or MAB',
+                                 help='LGFI or LGFI_SE or MAB or MAXIM',
                                  default='LGFI')
         self.parser.add_argument("--res",
                                  help='use residual path in MAB and LGFI_SE',

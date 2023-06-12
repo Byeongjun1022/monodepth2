@@ -7,6 +7,7 @@ import math
 import torch.cuda
 from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock, CALayer
 from max_vit import MaxViT_attention_bj 
+from edge_vit import PatchEmbed_bj, LGLBlock
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -452,7 +453,7 @@ class LiteMono(nn.Module):
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
 
         for g in global_block_type:
-            assert g in ['None', 'LGFI', 'MAB','LGFI_SE', 'MAXIM', 'Max']
+            assert g in ['None', 'LGFI', 'MAB','LGFI_SE', 'MAXIM', 'Max', 'Edge']
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -487,6 +488,7 @@ class LiteMono(nn.Module):
             dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
             cur = 0
             for i in range(3):
+                img_ratio= 2**(i+2)
                 stage_blocks = []
                 for j in range(self.depth[i]):
                     if j > self.depth[i] - global_block[i] - 1:
@@ -510,6 +512,12 @@ class LiteMono(nn.Module):
                         elif global_block_type[i] == 'Max':
                             stage_blocks.append(MaxViT_attention(self.dims[i], self.opt.window_size, self.opt.dim_head, SE = kwargs['SE']))
                             print('Max is applied')
+                        
+                        elif global_block_type[i] == 'Edge':
+                            # stage_blocks.append(nn.Sequential(PatchEmbed_bj(height// img_ratio, width/ img_ratio, self.dims[i], self.dims[i], patch_size=4),
+                            #                                   LGLBlock(self.dims[i], num_heads=self.opt.dim_head, sr_ratio=4)
+                            #                                   ))
+                            stage_blocks.append(LGLBlock(self.dims[i], num_heads=self.opt.dim_head, sr_ratio=4))
 
                         else:
                             raise NotImplementedError

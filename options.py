@@ -84,7 +84,7 @@ class MonodepthOptions:
                                  default=[0.0001, 5e-6, 31, 0.0001, 1e-5, 31])
         self.parser.add_argument('--window_size',
                                  type=int,
-                                 default=8
+                                 default=4
                                  )
         self.parser.add_argument('--dim_head',
                                  type=int,

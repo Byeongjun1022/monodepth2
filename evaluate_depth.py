@@ -128,7 +128,8 @@ def evaluate(opt):
                                                         residual=opt.res,
                                                         global_block_type=[opt.global_block_type for i in range(3)])
             else:
-                encoder = networks_lite.LiteMono(maxim=opt.maxim,
+                encoder = networks_lite.LiteMono(opt,
+                                                 maxim=opt.maxim,
                                                  block_size=tuple(opt.block_size),
                                                  grid_size=tuple(opt.grid_size),
                                                  residual=opt.res,

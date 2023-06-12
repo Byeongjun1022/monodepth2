@@ -7,6 +7,7 @@ import math
 import torch.cuda
 from maxim_pytorch import ResidualSplitHeadMultiAxisGmlpLayer, UNetEncoderBlock, CALayer
 from max_vit import MaxViT_attention_bj 
+from edge_vit import PatchEmbed_bj, LGLBlock
 
 
 class PositionalEncodingFourier(nn.Module):
@@ -402,12 +403,13 @@ class LiteMono(nn.Module):
     Lite-Mono
     """
 
-    def __init__(self, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
+    def __init__(self, opt, maxim, block_size, grid_size, residual, in_chans=3, model='lite-mono', height=192, width=640,
                  global_block=[1, 1, 1], global_block_type=['LGFI', 'LGFI', 'LGFI'],
                  drop_path_rate=0.2, layer_scale_init_value=1e-6, expan_ratio=6,
                  heads=[8, 8, 8], use_pos_embd_xca=[True, False, False], **kwargs):
 
         super().__init__()
+        self.opt = opt
         self.residual = residual
         self.block_size = block_size
         self.grid_size = grid_size
@@ -451,7 +453,7 @@ class LiteMono(nn.Module):
                 self.dilation = [[1, 2, 3], [1, 2, 3], [1, 2, 3, 2, 4, 6]]
 
         for g in global_block_type:
-            assert g in ['None', 'LGFI', 'MAB','LGFI_SE', 'MAXIM', 'Max']
+            assert g in ['None', 'LGFI', 'MAB','LGFI_SE', 'MAXIM', 'Max', 'Edge']
 
         self.downsample_layers = nn.ModuleList()  # stem and 3 intermediate downsampling conv layers
         stem1 = nn.Sequential(
@@ -486,6 +488,7 @@ class LiteMono(nn.Module):
             dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
             cur = 0
             for i in range(3):
+                img_ratio= 2**(i+2)
                 stage_blocks = []
                 for j in range(self.depth[i]):
                     if j > self.depth[i] - global_block[i] - 1:
@@ -507,8 +510,14 @@ class LiteMono(nn.Module):
                             stage_blocks.append(UNetEncoderBlock(self.dims[i], self.dims[i], block_size=(2, 2), grid_size=(2, 2),
                                                                  downsample=False))
                         elif global_block_type[i] == 'Max':
-                            stage_blocks.append(MaxViT_attention(self.dims[i], SE = kwargs['SE']))
+                            stage_blocks.append(MaxViT_attention(self.dims[i], self.opt.window_size, self.opt.dim_head, SE = kwargs['SE']))
                             print('Max is applied')
+                        
+                        elif global_block_type[i] == 'Edge':
+                            # stage_blocks.append(nn.Sequential(PatchEmbed_bj(height// img_ratio, width/ img_ratio, self.dims[i], self.dims[i], patch_size=4),
+                            #                                   LGLBlock(self.dims[i], num_heads=self.opt.dim_head, sr_ratio=4)
+                            #                                   ))
+                            stage_blocks.append(LGLBlock(self.dims[i], num_heads=self.opt.dim_head, sr_ratio=4))
 
                         else:
                             raise NotImplementedError

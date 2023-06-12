@@ -90,6 +90,14 @@ class MonodepthOptions:
                                  type=int,
                                  default=16
                                  )
+        self.parser.add_argument('--edge_full',
+                                 help='use lglblock without cdc blocks',
+                                 action='store_true')
+        self.parser.add_argument("--edge_block_num",
+                                 nargs="+",
+                                 type=int,
+                                 help="edge_vit block number",
+                                 default=[1, 1, 3])
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,

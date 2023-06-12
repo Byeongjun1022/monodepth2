@@ -484,6 +484,15 @@ class LiteMono(nn.Module):
             for i in range(3):
                 self.stages.append(UNetEncoderBlock(self.dims[i], channels[i], block_size=(2, 2), grid_size=(2, 2),
                                                     downsample=False))
+        elif self.opt.edge_full:
+            channels = [48, 80, 128]
+            block_num = self.opt.edge_block_num
+            for i in range(3):
+                lglblocks = []
+                for _ in range(block_num[i]):
+                    lglblocks.append(LGLBlock(channels[i], num_heads=self.opt.dim_head, sr_ratio=4))
+                self.stages.append(nn.Sequential(*lglblocks))
+                               
         else:
             dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depth))]
             cur = 0

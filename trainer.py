@@ -216,6 +216,9 @@ class Trainer:
         if self.opt.load_weights_folder is not None:
             self.load_model()
 
+        if self.opt.mypretrain is not None:
+            self.load_pretrain()
+
         print("Training model named:\n  ", self.opt.model_name)
         print("Models and tensorboard events files are saved to:\n  ", self.opt.log_dir)
         print("Training is using:\n  ", self.device)
@@ -795,3 +798,12 @@ class Trainer:
 
         else:
             print("Cannot find Adam weights so Adam is randomly initialized")
+
+    def load_pretrain(self):
+        path = self.opt.mypretrain
+        # model_dict = self.models["encoder"].state_dict()
+        loc = f'cuda:{self.opt.gpu_num}'
+        checkpoint = torch.load(path, map_location=loc)
+        self.models["encoder"].load_state_dict(checkpoint['state_dict'], strict = False)
+        print('mypretrain loaded')
+        

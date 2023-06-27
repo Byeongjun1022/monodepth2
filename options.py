@@ -24,6 +24,7 @@ class MonodepthOptions:
         # I add
         self.parser.add_argument("--lite",
                                  help='if set, use the encoders and decoders from mono-lite',
+                                 # default=True)
                                  action='store_true')
         self.parser.add_argument("--parallel",
                                  help='if set, use the parallel mono-lite',
@@ -98,6 +99,9 @@ class MonodepthOptions:
                                  type=int,
                                  help="edge_vit block number",
                                  default=[1, 1, 3])
+        self.parser.add_argument("--mypretrain",
+                                 type=str,
+                                 default="/mnt_2/logs/ImageNet/06-11-21_47/model_best.pth.tar")
         # PATHS
         self.parser.add_argument("--data_path",
                                  type=str,
@@ -155,7 +159,7 @@ class MonodepthOptions:
                                  nargs="+",
                                  type=int,
                                  help="scales used in the loss",
-                                 default=[0, 1, 2, 3])
+                                 default=[0, 1, 2])
         self.parser.add_argument("--min_depth",
                                  type=float,
                                  help="minimum depth",
@@ -205,7 +209,7 @@ class MonodepthOptions:
         self.parser.add_argument("--num_epochs",
                                  type=int,
                                  help="number of epochs",
-                                 default=20)
+                                 default=30)
         self.parser.add_argument("--scheduler_step_size",
                                  type=int,
                                  help="step size of the scheduler",
